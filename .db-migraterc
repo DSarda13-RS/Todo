@@ -1,0 +1,6 @@
+{
+    "sql-file": true,
+    "configFile": "src/database/config.js",
+    "migrations-dir":"src/database/migrations",
+    "table": "migrations"
+}
