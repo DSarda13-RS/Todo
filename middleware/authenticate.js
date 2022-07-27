@@ -12,11 +12,11 @@ const authenticateToken = async(req,res,next)=>{
         }
         req.user = user;
         req.uid = user.id.rows[0].id;
-        req.sess_id = user.sessionId;
+        req.session_id = user.sessionId;
         const Is_ended = await pool.query(
-            'SELECT is_ended FROM sessiontable WHERE session_id = $1', [req.sess_id]);
+            'SELECT is_ended FROM sessiontable WHERE session_id = $1', [req.session_id]);
         if(Is_ended.rows[0].is_ended === true){
-            res.send('Session Expired!!!');
+            res.status(440).send('Session Expired!!!');
         } else{
             next()
         }
