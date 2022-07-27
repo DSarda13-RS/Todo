@@ -1,5 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const {
+    authenticateToken
+} = require("../middleware/authenticate");
+
+const {
+    authenticateUser,
+    authenticateUserLogin
+} = require('../middleware/auth_body')
 
 const {
     createUser,
@@ -7,18 +15,16 @@ const {
     logoutUser,
     updateUser,
     deleteUser,
-    getUsers,
     getUser,
-    authenticateToken
 } = require('../controllers/users')
 
-router.post('/',createUser)
-router.post('/login',loginUser)
-router.put('/logout/:id',authenticateToken,logoutUser)
-router.put('/:id',authenticateToken,updateUser)
-router.delete('/:id',authenticateToken,deleteUser)
-router.get('/',authenticateToken,getUsers)
-router.get('/:id',authenticateToken,getUser)
+router.post('/create',authenticateUser,createUser)
+router.post('/login',authenticateUserLogin,loginUser)
+router.use(authenticateToken)
+router.put('/logout',logoutUser)
+router.put('/:user_id/update',authenticateUser,updateUser)
+router.delete('/delete',deleteUser)
+router.get('/details',getUser)
 
 module.exports = router
 

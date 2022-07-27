@@ -2,38 +2,29 @@ const pool = require("../db");
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')
 require('dotenv').config()
-const {authUsers} = require("../Validations/validation_user");
-const {authLogin} = require("../Validations/validation_user_login");
-
-function authenticateToken(req,res,next){
-    const authHeader = req.headers['authorization']
-    const token = authHeader && authHeader.split(' ')[1]
-    if(token === null){
-        return res.sendStatus(401)
-    }
-    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err,user)=>{
-        if(err){
-            return res.sendStatus(403)
-        }
-        res.locals.user = user;
-        res.locals.uid = user.id.rows[0].id;
-        res.locals.sess_id = user.sessionId;
-        next()
-    })
-}
 
 const createUser = async(req,res)=>{
     try{
         const {name,email,username,password} = req.body;
-        if(authUsers.validate({name,email,username,password}).error == null){
-            const salt = await bcrypt.genSalt()
-            const hashedPassword = await bcrypt.hash(password,salt)
-            const newUsers = await pool.query(
-                'INSERT INTO users (name,email,username,password) VALUES ($1,$2,$3,$4)',
-                [name,email,username,hashedPassword]);
-            res.json(newUsers.rows);
+        const email_exist = await pool.query(
+            'SELECT email FROM users WHERE email = $1 AND deleted_at is null',[email]);
+        if(email_exist.rowCount === 0){
+            const username_exist = await pool.query(
+                'SELECT username FROM users WHERE username = $1 AND deleted_at is null',[username]);
+            if(username_exist.rowCount === 0){
+                const salt = await bcrypt.genSalt()
+                const hashedPassword = await bcrypt.hash(password,salt)
+                const newUsers = await pool.query(
+                    'INSERT INTO users (name,email,username,password) VALUES ($1,$2,$3,$4)',
+                    [name,email,username,hashedPassword]);
+                res.json(newUsers.rows);
+            } else{
+                res.status(409);
+                res.send('username already used');
+            }
         } else{
-            res.json(authUsers.validate({name,email,username,password}).error.message);
+            res.status(409);
+            res.send('email already used');
         }
     } catch(err){
         console.error(err.message);
@@ -42,9 +33,6 @@ const createUser = async(req,res)=>{
 
 const loginUser = async(req,res)=>{
     const {username,password} = req.body;
-    if(username === null){
-        res.sendStatus(400);
-    }
     try{
         const passwordHashed = await pool.query(
             'SELECT password FROM users WHERE username = $1 AND deleted_at is null',[username]);
@@ -59,7 +47,8 @@ const loginUser = async(req,res)=>{
             res.json({accessToken: accessToken})
             // res.send('Success!!!')
         }else{
-            res.send('Not Allowed')
+            res.status(401);
+            res.send('Not Allowed');
         }
     } catch(err){
         console.error(err.message);
@@ -68,7 +57,7 @@ const loginUser = async(req,res)=>{
 
 const logoutUser = async(req,res)=>{
     try{
-        const id = res.locals.sess_id;
+        const id = req.sess_id;
         const logoutUsers = await pool.query(
             'UPDATE sessiontable SET is_ended = true, end_time = NOW() WHERE session_id = $1',[id])
         res.json('User Logged Out');
@@ -79,65 +68,29 @@ const logoutUser = async(req,res)=>{
 
 const updateUser = async(req,res)=>{
     try{
-        const id = res.locals.uid;
+        const id = req.uid;
         const {name,email,username,password} = req.body;
-        if(authUsers.validate({name,email,username,password}).error == null){
-            const Is_ended = await pool.query(
-                'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-            if(Is_ended.rows[0].is_ended === true){
-                res.send('Session Expired!!!');
-            } else{
-                const salt = await bcrypt.genSalt()
-                const hashedPassword = await bcrypt.hash(password,salt)
-                const updateUsers = await pool.query(
-                    'UPDATE users SET name = $1, email = $2, username = $3, password = $4, updated_at = NOW() WHERE id = $5 AND deleted_at is null',
-                    [name,email,username,hashedPassword,id])
-                res.json('Users was updated');
-            }
-        } else{
-            res.json(authUsers.validate({name,email,username,password}).error.message);
-        }
+        const salt = await bcrypt.genSalt()
+        const hashedPassword = await bcrypt.hash(password,salt)
+        const updateUsers = await pool.query(
+            'UPDATE users SET name = $1, email = $2, username = $3, password = $4, updated_at = NOW() WHERE id = $5 AND deleted_at is null',
+            [name,email,username,hashedPassword,id])
+        res.json('Users was updated');
     } catch(err){
         console.error(err.message);
     }
 }
-
-// case when condition in name,em,un,pswd
 
 const deleteUser = async(req,res)=>{
     try{
-        const id = res.locals.uid;
-        const Is_ended = await pool.query(
-            'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-        if(Is_ended.rows[0].is_ended === true){
-            res.send('Session Expired!!!');
-        } else{
-            const deleteUsers = await pool.query(
-                'UPDATE users SET deleted_at = NOW() WHERE id = $1 AND deleted_at is null', [id]);
-            const deleteTask = await pool.query(
-                'UPDATE todo SET deleted_at = NOW() WHERE user_id = $1 AND deleted_at is null', [id]);
-            const deleteSession = await pool.query(
-                'UPDATE sessiontable SET is_ended = true WHERE user_id = $1 AND is_ended = false', [id]);
-            res.json('User was successfully deleted');
-        }
-    } catch(err){
-        console.error(err.message);
-    }
-}
-
-//todo change query, session & tasks delete update.
-
-const getUsers = async(req,res)=>{
-    try{
-        const Is_ended = await pool.query(
-            'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-        if(Is_ended.rows[0].is_ended === true){
-            res.send('Session Expired!!!');
-        } else{
-            const allUsers = await pool.query(
-                'SELECT * FROM users WHERE deleted_at is null');
-            res.json(allUsers.rows);
-        }
+        const id = req.uid;
+        const deleteUsers = await pool.query(
+            'UPDATE users SET deleted_at = NOW() WHERE id = $1 AND deleted_at is null', [id]);
+        const deleteTask = await pool.query(
+            'UPDATE todo SET deleted_at = NOW() WHERE user_id = $1 AND deleted_at is null', [id]);
+        const deleteSession = await pool.query(
+            'UPDATE sessiontable SET is_ended = true WHERE user_id = $1 AND is_ended = false', [id]);
+        res.json('User was successfully deleted');
     } catch(err){
         console.error(err.message);
     }
@@ -145,19 +98,14 @@ const getUsers = async(req,res)=>{
 
 const getUser = async(req,res)=>{
     try{
-        const id = res.locals.uid;
-        const Is_ended = await pool.query(
-            'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-        if(Is_ended.rows[0].is_ended === true){
-            res.send('Session Expired!!!');
-        } else{
-            const singleUser = await pool.query('SELECT * FROM users WHERE id = $1 AND deleted_at is null', [id])
-            res.json(singleUser.rows);
-        }
+        const id = req.uid;
+        const singleUser = await pool.query('SELECT * FROM users WHERE id = $1 AND deleted_at is null', [id])
+        res.json(singleUser.rows);
     } catch(err){
         console.error(err.message);
     }
 }
+//getUser: User details
 
 module.exports = {
     createUser,
@@ -165,8 +113,6 @@ module.exports = {
     logoutUser,
     updateUser,
     deleteUser,
-    getUsers,
-    getUser,
-    authenticateToken
+    getUser
 }
 

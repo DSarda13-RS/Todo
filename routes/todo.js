@@ -2,25 +2,28 @@ const express = require('express');
 const router = express.Router();
 const {
     authenticateToken
-} = require("../controllers/users");
+} = require("../middleware/authenticate");
+
+const {
+    authenticateTodo,
+    authenticateTodoUpdate
+} = require('../middleware/auth_body')
 
 const {
     createTodo,
     completeTodo,
     updateTodo,
     deleteTodo,
-    getTasks,
     getTask,
     getParticularTask
 } = require("../controllers/todo");
-
-router.post('/:id',authenticateToken,createTodo)
-router.put('/:id',authenticateToken,updateTodo)
-router.delete('/:id',authenticateToken,deleteTodo)
-router.get('/',authenticateToken,getTasks)
-router.get('/:id',authenticateToken,getTask)
-router.get('/particular/:id',authenticateToken,getParticularTask)
-router.put('/complete/:id',authenticateToken,completeTodo)
+router.use(authenticateToken)
+router.post('/create',authenticateTodo,createTodo)
+router.put('/:task_id/complete',completeTodo)
+router.put('/:task_id/update',authenticateTodoUpdate,updateTodo)
+router.delete('/:task_id/delete',deleteTodo)
+router.get('/query',getTask)
+router.get('/:task_id',getParticularTask)
 
 module.exports = router
 

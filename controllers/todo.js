@@ -1,26 +1,13 @@
 const pool = require("../db");
-const {authTodo} = require("../Validations/validation_todo");
-const {authUpdate} = require("../Validations/validation_todo_update");
 
 const createTodo = async(req,res)=>{
     try{
-        const user_id = res.locals.uid;
-        const id = res.locals.sess_id;
+        const user_id = req.uid;
         const {description} = req.body;
-        if(authTodo.validate({description}).error == null){
-            const Is_ended = await pool.query(
-                'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-            if(Is_ended.rows[0].is_ended === true){
-                res.send('Session Expired!!!');
-            } else{
-                const newTask = await pool.query(
-                    'INSERT INTO todo (user_id,description) VALUES ($1,$2)',
-                    [user_id,description]);
-                res.json(newTask.rows);
-            }
-        } else{
-            res.json(authTodo.validate({description}).error.message);
-        }
+        const newTask = await pool.query(
+            'INSERT INTO todo (user_id,description) VALUES ($1,$2)',
+            [user_id,description]);
+        res.json(newTask.rows);
     } catch(err){
         console.error(err.message);
     }
@@ -28,21 +15,11 @@ const createTodo = async(req,res)=>{
 
 const completeTodo = async(req,res)=>{
     try{
-        const id = res.locals.uid;
-        const {description} = req.body;
-        if(authTodo.validate({description}).error == null){
-            const Is_ended = await pool.query(
-                'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-            if(Is_ended.rows[0].is_ended === true){
-                res.send('Session Expired!!!');
-            } else{
-                const completedTask = await pool.query(
-                    'UPDATE todo SET mark_completed = true WHERE user_id = $1 AND description = $2 AND deleted_at is null',[id,description]);
-                res.json('Task was Completed');
-            }
-        } else{
-            res.json(authTodo.validate({description}).error.message);
-        }
+        const user_id = req.uid;
+        const {task_id} = req.params;
+        const completedTask = await pool.query(
+            'UPDATE todo SET mark_completed = true WHERE user_id = $1 AND id = $2 AND deleted_at is null',[user_id,task_id]);
+        res.json('Task was Completed');
     } catch(err){
         console.error(err.message);
     }
@@ -50,22 +27,13 @@ const completeTodo = async(req,res)=>{
 
 const updateTodo = async(req,res)=>{
     try{
-        const id = res.locals.uid;
-        const {descriptionOld,descriptionNew} = req.body;
-        if(authUpdate.validate({descriptionOld,descriptionNew}).error == null){
-            const Is_ended = await pool.query(
-                'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-            if(Is_ended.rows[0].is_ended === true){
-                res.send('Session Expired!!!');
-            } else{
-                const updateTask = await pool.query(
-                    'UPDATE todo SET description = $1, updated_at = NOW() WHERE user_id = $2 AND description = $3 AND deleted_at is null',
-                    [descriptionNew,id,descriptionOld])
-                res.json('Task was updated');
-            }
-        } else{
-            res.json(authUpdate.validate({descriptionOld,descriptionNew}).error.message);
-        }
+        const user_id = req.uid;
+        const {task_id} = req.params;
+        const {descriptionNew} = req.body;
+        const updateTask = await pool.query(
+            'UPDATE todo SET description = $1, updated_at = NOW() WHERE user_id = $2 AND id = $3 AND deleted_at is null',
+            [descriptionNew,user_id,task_id])
+        res.json('Task was updated');
     } catch(err){
         console.error(err.message);
     }
@@ -73,87 +41,57 @@ const updateTodo = async(req,res)=>{
 
 const deleteTodo = async(req,res)=>{
     try{
-        const id = res.locals.uid;
-        const {description} = req.body;
-        if(authTodo.validate({description}).error == null){
-            const Is_ended = await pool.query(
-                'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-            if(Is_ended.rows[0].is_ended === true){
-                res.send('Session Expired!!!');
-            } else{
-                const deleteTask = await pool.query(
-                    'UPDATE todo SET deleted_at = NOW() WHERE user_id = $1 AND description = $2 AND deleted_at is null', [id,description]);
-                res.json('Todo was successfully deleted');
-            }
-        } else{
-            res.json(authTodo.validate({description}).error.message);
-        }
+        const user_id = req.uid;
+        const {task_id} = req.params;
+        const deleteTask = await pool.query(
+            'UPDATE todo SET deleted_at = NOW() WHERE user_id = $1 AND id = $2 AND deleted_at is null', [user_id,task_id]);
+        res.json('Todo was successfully deleted');
     } catch(err){
         console.error(err.message);
     }
 }
-
-const getTasks = async(req,res)=>{
-    try{
-        const Is_ended = await pool.query(
-            'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-        if(Is_ended.rows[0].is_ended === true){
-            res.send('Session Expired!!!');
-        } else{
-            const allTasks = await pool.query(
-                'SELECT * FROM todo WHERE deleted_at is null');
-            res.json(allTasks.rows);
-        }
-    } catch(err){
-        console.error(err.message);
-    }
-}
-//tasks of all users
 
 const getTask = async(req,res)=>{
     try{
-        const id = res.locals.uid;
-        const Is_ended = await pool.query(
-            'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-        if(Is_ended.rows[0].is_ended === true){
-            res.send('Session Expired!!!');
-        } else{
-            const singleUserTask = await pool.query('SELECT * FROM todo WHERE user_id = $1 AND deleted_at is null', [id])
-            res.json(singleUserTask.rows);
+        const user_id = req.uid;
+        const is_completed = req.query;
+        const page = req.query.page;
+        const limit = req.query.limit;
+        const startIndex = (page - 1)*limit;
+        const endIndex = page*limit;
+        const complete = is_completed.is_completed;
+        if(complete){
+            const UserTaskComplete = await pool.query('SELECT * FROM todo WHERE user_id = $1 AND mark_completed = $2 AND deleted_at is null',
+                [user_id,complete]);
+            res.json(UserTaskComplete.rows.slice(startIndex,endIndex));
         }
+        const UserTask = await pool.query('SELECT * FROM todo WHERE user_id = $1 AND deleted_at is null',
+            [user_id]);
+        res.json(UserTask.rows.slice(startIndex,endIndex));
     } catch(err){
         console.error(err.message);
     }
 }
-//all tasks of particular user
+//getTask: all tasks of particular user
 
 const getParticularTask = async(req,res)=>{
     try{
-        const id = res.locals.uid;
-        const {description} = req.body;
-        if(authTodo.validate({description}).error == null){
-            const Is_ended = await pool.query(
-                'SELECT is_ended FROM sessiontable WHERE session_id = $1',[id]);
-            if(Is_ended.rows[0].is_ended === true){
-                res.send('Session Expired!!!');
-            } else{
-                const singleTask = await pool.query('SELECT * FROM todo WHERE user_id = $1 AND description = $2 AND deleted_at is null', [id,description])
-                res.json(singleTask.rows);
-            }
-        } else{
-            res.json(authTodo.validate({description}).error.message);
-        }
+        const user_id = req.uid;
+        const {task_id} = req.params;
+        const singleTask = await pool.query('SELECT * FROM todo WHERE user_id = $1 AND id = $2 AND deleted_at is null', [user_id,task_id])
+        res.json(singleTask.rows);
     } catch(err){
         console.error(err.message);
     }
 }
+//getParticularTask: Particular task of a user
 
 module.exports = {
     createTodo,
     completeTodo,
     updateTodo,
     deleteTodo,
-    getTasks,
     getTask,
     getParticularTask
 }
+
